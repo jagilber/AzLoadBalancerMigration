@@ -7,10 +7,15 @@ function PublicIPToStatic {
     )
     log -Message "[PublicIPToStatic] Changing public IP addresses to static (if necessary)"
     $basicLoadBalancerFeConfig = $BasicLoadBalancer.FrontendIpConfigurations
+    $global:PublicIps = @{}
 
     # Change allocation method to staic and SKU to Standard
     foreach ($feConfig in $basicLoadBalancerFeConfig) {
         $pip = Get-AzPublicIpAddress -ResourceGroupName $feConfig.PublicIpAddress.Id.Split('/')[4] -Name $feConfig.PublicIpAddress.Id.Split('/')[-1]
+        if($BasicLoadBalancer.Probes.Port) {
+            [void]$global:PublicIps.Add($pip.IpAddress, @($BasicLoadBalancer.Probes.Port))
+        }
+
         if ($pip.PublicIpAllocationMethod -ne "Static") {
             log -Message "[PublicIPToStatic] '$($pip.Name)' ('$($pip.IpAddress)') was using Dynamic IP, changing to Static IP allocation method." -Severity "Warning"
             $pip.PublicIpAllocationMethod = "Static"

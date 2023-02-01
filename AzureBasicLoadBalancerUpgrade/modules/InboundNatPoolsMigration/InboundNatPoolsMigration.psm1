@@ -1,5 +1,6 @@
 # Load Modules
-Import-Module ((Split-Path $PSScriptRoot -Parent) + "/Log/Log.psd1") 
+Import-Module ((Split-Path $PSScriptRoot -Parent) + "/Log/Log.psd1")
+Import-Module ((Split-Path $PSScriptRoot -Parent) + "/Job/Job.psd1")
 Import-Module ((Split-Path $PSScriptRoot -Parent) + "/UpdateVmssInstances/UpdateVmssInstances.psd1")
 Import-Module ((Split-Path $PSScriptRoot -Parent) + "/GetVmssFromBasicLoadBalancer/GetVmssFromBasicLoadBalancer.psd1")
 function _HardCopyObject {
@@ -23,7 +24,8 @@ function _UpdateAzVmss {
     log -Message "[_UpdateAzVmss] Saving VMSS $($vmss.Name)"
     try {
         $ErrorActionPreference = 'Stop'
-        Update-AzVmss -ResourceGroupName $vmss.ResourceGroupName -VMScaleSetName $vmss.Name -VirtualMachineScaleSet $vmss > $null
+        $job = Update-AzVmss -ResourceGroupName $vmss.ResourceGroupName -VMScaleSetName $vmss.Name -VirtualMachineScaleSet $vmss -AsJob
+        WaitJob -JobId $job.Id
     }
     catch {
         $exceptionType = (($_.Exception.Message -split 'ErrorCode:')[1] -split 'ErrorMessage:')[0].Trim()
