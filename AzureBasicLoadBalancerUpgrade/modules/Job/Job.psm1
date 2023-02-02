@@ -1,5 +1,43 @@
 Import-Module ((Split-Path $PSScriptRoot -Parent) + "/Log/Log.psd1")
 
+function CreateIPMonitorJob {
+    if ($global:PublicIps) {
+        $tcpJob = Start-Job -ScriptBlock {
+            param($pips)
+            $ProgressPreference = 'SilentlyContinue'
+            $WarningPreference = 'SilentlyContinue'
+            while ($true) {
+                try {
+                    Start-Sleep -Seconds 10
+                    $tcpTestSucceeded = $true
+                    foreach ($pip in $pips.GetEnumerator()) {
+                        $tcpClient = [Net.Sockets.TcpClient]::new([Net.Sockets.AddressFamily]::InterNetwork)
+                        $tcpClient.ReceiveTimeout = 1000
+                        $tcpClient.SendTimeout = 1000
+                        $tcpClient.Connect($pip.Key, $pip.Value[0])
+                        $tcpTestSucceeded = $tcpTestSucceeded -and $tcpClient.Connected
+                        Write-Verbose "tcpClient: computer:$($pip.Key) port:$($pip.Value[0])`n$($tcpClient | convertto-json -Depth 1 -WarningAction SilentlyContinue)"
+
+                        if ($tcpClient.Connected) {
+                            $tcpClient.Close()
+                        }
+                    }
+
+                    Write-Output $tcpTestSucceeded
+                }
+                catch {
+                    Write-Verbose "exception:$($_)"
+                }
+                finally {
+                    $tcpClient.Dispose()
+                }
+            }
+        } -ArgumentList @($global:PublicIps)
+    }
+
+    return $tcpJob
+}
+
 function RemoveJob {
     [CmdletBinding()]
     param(
@@ -37,22 +75,7 @@ function WaitJob {
 
     log -Message "[WaitJob] Checking Job Id: $($JobId)"
 
-    if ($global:PublicIps) {
-        $tcpJob = Start-Job -ScriptBlock {
-            param($pips)
-            $ProgressPreference = 'SilentlyContinue'
-            $WarningPreference = 'SilentlyContinue'
-            while ($true) {
-                $tcpTestSucceeded = $true
-                foreach ($pip in $pips.GetEnumerator()) {
-                    Write-Verbose "(Test-NetConnection -ComputerName $($pip.Key.IpAddress) -Port $($pip.Value[0])).TcpTestSucceeded"
-                    $tcpTestSucceeded = $tcpTestSucceeded -and (Test-NetConnection -ComputerName $pip.Key -Port $pip.Value[0]).TcpTestSucceeded
-                }
-                Write-Output $tcpTestSucceeded
-                Start-Sleep -seconds 1
-            }
-        } -ArgumentList @($global:PublicIps)
-    }
+    $tcpJob = CreateIPMonitorJob
 
     while ($job = get-job -Id $JobId) {
         $jobInfo = (receive-job -Id $JobId)
