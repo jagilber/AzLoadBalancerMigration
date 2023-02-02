@@ -1,24 +1,36 @@
 Import-Module ((Split-Path $PSScriptRoot -Parent) + "/Log/Log.psd1")
 
 function CreateIPMonitorJob {
+    $tcpJob = $null
+
     if ($global:PublicIps) {
         $tcpJob = Start-Job -ScriptBlock {
             param($pips)
-            $ProgressPreference = 'SilentlyContinue'
-            $WarningPreference = 'SilentlyContinue'
+            $WarningPreference = $ProgressPreference = 'SilentlyContinue'
+
             while ($true) {
                 try {
-                    Start-Sleep -Seconds 10
+                    Start-Sleep -Seconds 5
                     $tcpTestSucceeded = $true
+
                     foreach ($pip in $pips.GetEnumerator()) {
                         $tcpClient = [Net.Sockets.TcpClient]::new([Net.Sockets.AddressFamily]::InterNetwork)
-                        $tcpClient.ReceiveTimeout = 1000
-                        $tcpClient.SendTimeout = 1000
-                        $tcpClient.Connect($pip.Key, $pip.Value[0])
-                        $tcpTestSucceeded = $tcpTestSucceeded -and $tcpClient.Connected
-                        Write-Verbose "tcpClient: computer:$($pip.Key) port:$($pip.Value[0])`n$($tcpClient | convertto-json -Depth 1 -WarningAction SilentlyContinue)"
+                        $tcpClient.SendTimeout = $tcpClient.ReceiveTimeout = 1000
+                        [IAsyncResult]$asyncResult = $tcpClient.BeginConnect($pip.Key, $pip.Value[0], $null, $null)
 
-                        if ($tcpClient.Connected) {
+                        if (!$asyncResult.AsyncWaitHandle.WaitOne(1000, $false)) {
+                            $tcpTestSucceeded = $false
+                        }
+                        else {
+                            $tcpTestSucceeded = $tcpTestSucceeded -and $tcpClient.Connected
+                        }
+
+                        Write-Verbose "[CreateIPMonitorJob] tcpClient: computer:$($pip.Key) port:$($pip.Value[0])`n$($tcpClient | convertto-json -Depth 1 -WarningAction SilentlyContinue)"
+
+                        if (!$asyncResult.IsCompleted) {
+                            $tcpClient.EndConnect($asyncResult)
+                        }
+                        elseif ($tcpClient.Connected) {
                             $tcpClient.Close()
                         }
                     }
@@ -26,7 +38,7 @@ function CreateIPMonitorJob {
                     Write-Output $tcpTestSucceeded
                 }
                 catch {
-                    Write-Verbose "exception:$($_)"
+                    Write-Verbose "[CreateIPMonitorJob] exception:$($_)"
                 }
                 finally {
                     $tcpClient.Dispose()
@@ -47,7 +59,6 @@ function RemoveJob {
     )
 
     log -Message "[RemoveJob] Removing Job Id: $($JobId)"
-
     if (Get-Job -Id $JobId) {
         Remove-Job -Id $JobId -Force
         log -Message "[RemoveJob] Job Removed: $($JobId)"
@@ -68,13 +79,12 @@ function WaitJob {
         [string]$JobId
     )
 
-    $tcpTestSucceeded = $null
     $job = $null
-    $tcpTestLastResult = $null
     $publicIpInfo = ''
+    $tcpTestLastResult = $null
+    $tcpTestSucceeded = $false
 
     log -Message "[WaitJob] Checking Job Id: $($JobId)"
-
     $tcpJob = CreateIPMonitorJob
 
     while ($job = get-job -Id $JobId) {
@@ -104,7 +114,6 @@ function WaitJob {
         }
 
         $status = "State:$($job.State) $publicIpInfo Execution Time:$(((get-date) - $job.PSBeginTime).Minutes) minutes"
-
         Write-Progress -Activity $Message -id 0 -Status $status
 
         if ($job.State -ine "Running") {
