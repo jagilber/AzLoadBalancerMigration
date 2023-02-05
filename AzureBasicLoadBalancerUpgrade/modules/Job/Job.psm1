@@ -46,7 +46,7 @@ function WaitJob {
         }
 
         $executionTime = ((get-date) - $job.PSBeginTime).Minutes
-        $status = "State:$($job.State) Minutes Executing:$executionTime"
+        $status = "$publicIpInfo Minutes Executing:$executionTime State:$($job.State)"
         Write-Progress -Activity $Message -id 0 -Status $status
 
         if ($job.State -ine "Running") {
