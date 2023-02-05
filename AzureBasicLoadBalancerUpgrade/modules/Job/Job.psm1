@@ -42,7 +42,7 @@ function WaitJob {
             log -Message "[WaitJob] Receiving Job: $($jobInfo)"
         }
         else {
-            if($VerbosePreference -ieq 'Continue') {
+            if ($VerbosePreference -ieq 'Continue') {
                 log -Message "[WaitJob] Receiving Job No Update: $($job | ConvertTo-Json -Depth 1 -WarningAction SilentlyContinue)" -Severity "Verbose"
             }
         }
