@@ -82,15 +82,16 @@ function WaitJob {
     )
 
     $job = $null
+    $percentAvailable = 0
     $publicIpInfo = ''
+    $samples = 1
+    $status = ''
     $tcpTestLastResult = $null
     $tcpTestSucceeded = $false
+    $trueResults = 0
 
     log -Message "[WaitJob] Checking Job Id: $($JobId)"
     $tcpJob = StartIPMonitorJob -IpAddressPorts $global:PublicIps
-    $samples = 1
-    $trueResults = 0
-    $percentAvailable = 0
 
     while ($job = get-job -Id $JobId) {
         $jobInfo = (receive-job -Id $JobId)
@@ -122,7 +123,8 @@ function WaitJob {
             $publicIpInfo = "IP Avail:$tcpTestSucceeded ($percentAvailable% Total Avail)"
         }
 
-        $status = "$publicIpInfo State:$($job.State) Minutes Executing:$(((get-date) - $job.PSBeginTime).Minutes)"
+        $executionTime = ((get-date) - $job.PSBeginTime).Minutes
+        $status = "$publicIpInfo State:$($job.State) Minutes Executing:$executionTime"
         Write-Progress -Activity $Message -id 0 -Status $status
 
         if ($job.State -ine "Running") {
@@ -139,6 +141,8 @@ function WaitJob {
 
         Start-Sleep -Seconds 1
     }
+
+    log -Message "[WaitJob] Job Complete: $status"
 
     if ($tcpJob) {
         RemoveJob -JobId $tcpJob.Id
