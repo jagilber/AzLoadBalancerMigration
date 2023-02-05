@@ -42,7 +42,9 @@ function WaitJob {
             log -Message "[WaitJob] Receiving Job: $($jobInfo)"
         }
         else {
-            log -Message "[WaitJob] Receiving Job No Update: $($job | ConvertTo-Json -Depth 1 -WarningAction SilentlyContinue)" -Severity "Debug"
+            if($VerbosePreference -ieq 'Continue') {
+                log -Message "[WaitJob] Receiving Job No Update: $($job | ConvertTo-Json -Depth 1 -WarningAction SilentlyContinue)" -Severity "Verbose"
+            }
         }
 
         $executionTime = ((get-date) - $job.PSBeginTime).Minutes
