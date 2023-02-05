@@ -1,57 +1,5 @@
 Import-Module ((Split-Path $PSScriptRoot -Parent) + "/Log/Log.psd1")
 
-function StartIPMonitorJob {
-    param(
-        [Parameter(Mandatory = $True, Position = 0)]
-        [hashtable]$IpAddressPorts
-    )
-    # cloud shell does not have test-netconnection. using tcpclient
-    $tcpJob = $null
-    if ($IpAddressPorts) {
-        $tcpJob = Start-Job -ScriptBlock {
-            param([hashtable]$IpAddressPorts)
-            $WarningPreference = $ProgressPreference = 'SilentlyContinue'
-
-            while ($true) {
-                $tcpClient = $null
-
-                try {
-                    Start-Sleep -Seconds 5
-                    $tcpTestSucceeded = $true
-
-                    foreach ($ipAddressPort in $IpAddressPorts.GetEnumerator()) {
-                        $tcpClient = [Net.Sockets.TcpClient]::new([Net.Sockets.AddressFamily]::InterNetwork)
-                        $tcpClient.SendTimeout = $tcpClient.ReceiveTimeout = 1000
-                        [IAsyncResult]$asyncResult = $tcpClient.BeginConnect($ipAddressPort.Key, $ipAddressPort.Value[0], $null, $null)
-            
-                        if (!$asyncResult.AsyncWaitHandle.WaitOne(1000, $false)) {
-                            $tcpTestSucceeded = $false
-                        }
-                        else {
-                            $tcpTestSucceeded = $tcpTestSucceeded -and $tcpClient.Connected
-                        }
-                        Write-Verbose "[CreateIPMonitorJob] tcpClient: computer:$($ipAddressPort.Key) port:$($ipAddressPort.Value[0])
-                            $($tcpClient | convertto-json -Depth 1 -WarningAction SilentlyContinue)"
-                    }
-                    Write-Output $tcpTestSucceeded
-                }
-                catch {
-                    Write-Verbose "[CreateIPMonitorJob] exception:$($_)"
-                }
-                finally {
-                    if ($tcpClient) {
-                        if ($tcpClient.Connected) {
-                            $tcpClient.Close()
-                        }
-                        $tcpClient.Dispose()
-                    }
-                }
-            }
-        } -ArgumentList @($IpAddressPorts)
-    }
-    return $tcpJob
-}
-
 function RemoveJob {
     [CmdletBinding()]
     param(
@@ -81,17 +29,7 @@ function WaitJob {
         [string]$JobId
     )
 
-    $job = $null
-    $percentAvailable = 0
-    $publicIpInfo = ''
-    $samples = 1
-    $status = ''
-    $tcpTestLastResult = $null
-    $tcpTestSucceeded = $false
-    $trueResults = 0
-
     log -Message "[WaitJob] Checking Job Id: $($JobId)"
-    $tcpJob = StartIPMonitorJob -IpAddressPorts $global:PublicIps
 
     while ($job = get-job -Id $JobId) {
         $jobInfo = (receive-job -Id $JobId)
@@ -107,24 +45,8 @@ function WaitJob {
             log -Message "[WaitJob] Receiving Job No Update: $($job | ConvertTo-Json -Depth 1 -WarningAction SilentlyContinue)" -Severity "Debug"
         }
 
-        if ($global:PublicIps -and (Get-Job -id $tcpJob.Id)) {
-            $tcpTestSucceeded = @((Receive-Job -Id $tcpJob.Id))[-1]
-            if (![string]::IsNullOrEmpty($tcpTestSucceeded)) {
-                $tcpTestLastResult = $tcpTestSucceeded
-                if($tcpTestLastResult) {
-                    $trueResults++
-                }
-                $percentAvailable = [Math]::Round(($trueResults/$samples++) * 100)
-            }
-            else {
-                $tcpTestSucceeded = $tcpTestLastResult
-            }
-
-            $publicIpInfo = "IP Avail:$tcpTestSucceeded ($percentAvailable% Total Avail)"
-        }
-
         $executionTime = ((get-date) - $job.PSBeginTime).Minutes
-        $status = "$publicIpInfo State:$($job.State) Minutes Executing:$executionTime"
+        $status = "State:$($job.State) Minutes Executing:$executionTime"
         Write-Progress -Activity $Message -id 0 -Status $status
 
         if ($job.State -ine "Running") {
