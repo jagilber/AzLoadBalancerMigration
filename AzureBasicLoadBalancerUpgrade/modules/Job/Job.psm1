@@ -1,6 +1,6 @@
 Import-Module ((Split-Path $PSScriptRoot -Parent) + "/Log/Log.psd1")
 
-function CreateIPMonitorJob {
+function StartIPMonitorJob {
     param(
         [Parameter(Mandatory = $True, Position = 0)]
         [hashtable]$IpAddressPorts
@@ -87,7 +87,10 @@ function WaitJob {
     $tcpTestSucceeded = $false
 
     log -Message "[WaitJob] Checking Job Id: $($JobId)"
-    $tcpJob = CreateIPMonitorJob -IpAddressPorts $global:PublicIps
+    $tcpJob = StartIPMonitorJob -IpAddressPorts $global:PublicIps
+    $samples = 1
+    $trueResults = 0
+    $percentAvailable = 0
 
     while ($job = get-job -Id $JobId) {
         $jobInfo = (receive-job -Id $JobId)
@@ -100,22 +103,26 @@ function WaitJob {
             log -Message "[WaitJob] Receiving Job: $($jobInfo)"
         }
         else {
-            log -Message "[WaitJob] Receiving Job No Update: $($job | ConvertTo-Json -Depth 1 -WarningAction SilentlyContinue)" -Severity "Verbose"
+            log -Message "[WaitJob] Receiving Job No Update: $($job | ConvertTo-Json -Depth 1 -WarningAction SilentlyContinue)" -Severity "Debug"
         }
 
-        if ($global:PublicIps) {
+        if ($global:PublicIps -and (Get-Job -id $tcpJob.Id)) {
             $tcpTestSucceeded = @((Receive-Job -Id $tcpJob.Id))[-1]
             if (![string]::IsNullOrEmpty($tcpTestSucceeded)) {
                 $tcpTestLastResult = $tcpTestSucceeded
+                if($tcpTestLastResult) {
+                    $trueResults++
+                }
+                $percentAvailable = [Math]::Round(($trueResults/$samples++) * 100)
             }
             else {
                 $tcpTestSucceeded = $tcpTestLastResult
             }
 
-            $publicIpInfo = "Public IP Available:$tcpTestSucceeded"
+            $publicIpInfo = "IP Avail:$tcpTestSucceeded ($percentAvailable% Total Avail)"
         }
 
-        $status = "State:$($job.State) $publicIpInfo Execution Time:$(((get-date) - $job.PSBeginTime).Minutes) minutes"
+        $status = "$publicIpInfo State:$($job.State) Minutes Executing:$(((get-date) - $job.PSBeginTime).Minutes)"
         Write-Progress -Activity $Message -id 0 -Status $status
 
         if ($job.State -ine "Running") {
