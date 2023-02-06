@@ -17,10 +17,10 @@ function StartIPMonitorJob {
                 try {
                     Start-Sleep -Seconds 5
                     $tcpTestSucceeded = $true
-
+                    # check all ip addresses
                     foreach ($ipAddressPort in $IpAddressPorts.GetEnumerator()) {
                         $portTestSucceeded = $false
-
+                        # checak all ports for each ip address
                         foreach ($port in $ipAddressPort.Value) {
                             $tcpClient = [Net.Sockets.TcpClient]::new([Net.Sockets.AddressFamily]::InterNetwork)
                             $tcpClient.SendTimeout = $tcpClient.ReceiveTimeout = 1000
@@ -40,13 +40,10 @@ function StartIPMonitorJob {
                     Write-Output $tcpTestSucceeded
                 }
                 catch {
-                    Write-Verbose "[CreateIPMonitorJob] exception:$($_)"
+                    Write-Verbose "[CreateIPMonitorJob] exception:$($PSItem)"
                 }
                 finally {
                     if ($tcpClient) {
-                        if ($tcpClient.Connected) {
-                            $tcpClient.Close()
-                        }
                         $tcpClient.Dispose()
                     }
                 }
