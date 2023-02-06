@@ -14,24 +14,28 @@ function StartIPMonitorJob {
 
             while ($true) {
                 $tcpClient = $null
-
                 try {
                     Start-Sleep -Seconds 5
                     $tcpTestSucceeded = $true
 
                     foreach ($ipAddressPort in $IpAddressPorts.GetEnumerator()) {
-                        $tcpClient = [Net.Sockets.TcpClient]::new([Net.Sockets.AddressFamily]::InterNetwork)
-                        $tcpClient.SendTimeout = $tcpClient.ReceiveTimeout = 1000
-                        [IAsyncResult]$asyncResult = $tcpClient.BeginConnect($ipAddressPort.Key, $ipAddressPort.Value[0], $null, $null)
-            
-                        if (!$asyncResult.AsyncWaitHandle.WaitOne(1000, $false)) {
-                            $tcpTestSucceeded = $false
+                        $portTestSucceeded = $false
+
+                        foreach ($port in $ipAddressPort.Value) {
+                            $tcpClient = [Net.Sockets.TcpClient]::new([Net.Sockets.AddressFamily]::InterNetwork)
+                            $tcpClient.SendTimeout = $tcpClient.ReceiveTimeout = 1000
+                            [IAsyncResult]$asyncResult = $tcpClient.BeginConnect($ipAddressPort.Key, $port, $null, $null)
+
+                            if (!$asyncResult.AsyncWaitHandle.WaitOne(1000, $false)) {
+                                $portTestSucceeded = $false
+                            }
+                            else {
+                                $portTestSucceeded = $portTestSucceeded -or $tcpClient.Connected
+                            }
+                            Write-Verbose "[CreateIPMonitorJob] tcpClient: computer:$($ipAddressPort.Key) port:$($port) $portTestSucceeded"
+                            $tcpClient.Dispose()
                         }
-                        else {
-                            $tcpTestSucceeded = $tcpTestSucceeded -and $tcpClient.Connected
-                        }
-                        Write-Verbose "[CreateIPMonitorJob] tcpClient: computer:$($ipAddressPort.Key) port:$($ipAddressPort.Value[0])
-                            $($tcpClient | convertto-json -Depth 1 -WarningAction SilentlyContinue)"
+                        $tcpTestSucceeded = $tcpTestSucceeded -and $portTestSucceeded
                     }
                     Write-Output $tcpTestSucceeded
                 }
@@ -113,10 +117,10 @@ function WaitJob {
             $tcpTestSucceeded = @((Receive-Job -Id $tcpJob.Id))[-1]
             if (![string]::IsNullOrEmpty($tcpTestSucceeded)) {
                 $tcpTestLastResult = $tcpTestSucceeded
-                if($tcpTestLastResult) {
+                if ($tcpTestLastResult) {
                     $trueResults++
                 }
-                $percentAvailable = [Math]::Round(($trueResults/$samples++) * 100)
+                $percentAvailable = [Math]::Round(($trueResults / $samples++) * 100)
             }
             else {
                 $tcpTestSucceeded = $tcpTestLastResult
