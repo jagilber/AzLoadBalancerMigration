@@ -41,14 +41,12 @@ function WaitJob {
         if ($jobInfo) {
             log -Message "[WaitJob] Receiving Job: $($jobInfo)"
         }
-        else {
-            if ($DebugPreference -ieq 'Continue') {
-                log -Message "[WaitJob] Receiving Job No Update: $($job | ConvertTo-Json -Depth 1 -WarningAction SilentlyContinue)" -Severity "Debug"
-            }
+        elseif ($DebugPreference -ieq 'Continue') {
+            log -Message "[WaitJob] Receiving Job No Update: $($job | ConvertTo-Json -Depth 1 -WarningAction SilentlyContinue)" -Severity "Debug"
         }
 
         $executionTime = ((get-date) - $job.PSBeginTime).Minutes
-        $status = "$publicIpInfo Minutes Executing:$executionTime State:$($job.State)"
+        $status = "Minutes Executing:$executionTime State:$($job.State)"
         Write-Progress -Activity $Message -id 0 -Status $status
 
         if ($job.State -ine "Running") {
@@ -67,10 +65,6 @@ function WaitJob {
     }
 
     log -Message "[WaitJob] Job Complete: $status"
-
-    if ($tcpJob) {
-        RemoveJob -JobId $tcpJob.Id
-    }
 }
 
 Export-ModuleMember -Function WaitJob
