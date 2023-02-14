@@ -104,10 +104,8 @@ function WaitJob {
         if ($jobInfo) {
             log -Message "[WaitJob] Receiving Job: $($jobInfo)"
         }
-        else {
-            if ($DebugPreference -ieq 'Continue') {
-                log -Message "[WaitJob] Receiving Job No Update: $($job | ConvertTo-Json -Depth 1 -WarningAction SilentlyContinue)" -Severity "Debug"
-            }
+        elseif ($DebugPreference -ieq 'Continue') {
+            log -Message "[WaitJob] Receiving Job No Update: $($job | ConvertTo-Json -Depth 1 -WarningAction SilentlyContinue)" -Severity "Debug"
         }
 
         if ($global:PublicIps -and (Get-Job -id $tcpJob.Id)) {
