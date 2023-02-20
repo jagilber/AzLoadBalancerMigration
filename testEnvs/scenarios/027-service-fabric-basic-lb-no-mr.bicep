@@ -450,8 +450,8 @@ resource vmNodeType0 'Microsoft.Compute/virtualMachineScaleSets@2022-08-01' = {
         ]
       }
       osProfile: {
-        adminPassword: kv1.getSecret('adminPassword')  //adminPassword
-        adminUsername: kv1.getSecret('adminUsername') //adminUserName
+        adminPassword: adminPassword // kv1.getSecret('adminPassword')  //adminPassword
+        adminUsername: adminUserName // kv1.getSecret('adminUsername') //adminUserName
         computerNamePrefix: vmNodeType0Name
         secrets: [
           {
