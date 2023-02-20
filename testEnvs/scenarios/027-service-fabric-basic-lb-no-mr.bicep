@@ -1,21 +1,18 @@
 // service fabric 3 node bronze durability cluster with no management role (MR)
 // v0.1
 
-targetScope = 'subscription'
+targetScope = 'resourceGroup'
 param location string
 param resourceGroupName string
 param keyVaultName string
 param keyVaultResourceGroupName string
 
-@description('Remote desktop user password. Must be a strong password')
-@secure()
-param adminPassword string
+// @description('Remote desktop user password. Must be a strong password')
+// @secure()
+// param adminPassword string
 
-@description('Remote desktop user Id')
-param adminUserName string = 'testadm'
-
-@description('Name for the storage account that contains application diagnostics data from the cluster')
-param applicationDiagnosticsStorageAccountName string = toLower('sfdiag${uniqueString(resourceId('Microsoft.Resources/resourceGroups', resourceGroupName))}3')
+// @description('Remote desktop user Id')
+// param adminUserName string = 'testadm'
 
 @description('Certificate Thumbprint')
 param certificateThumbprint string
@@ -25,7 +22,7 @@ param certificateThumbprint string
 param certificateUrlValue string
 
 @description('Name of your cluster - Between 3 and 23 characters. Letters and numbers only')
-param clusterName string = 'Cluster'
+param clusterName string
 
 @description('DNS Name')
 param dnsName string
@@ -68,9 +65,6 @@ param subnet0Name string = 'Subnet-0'
 @description('Virtual Network Subnet0 Address Prefix')
 param subnet0Prefix string = '10.0.0.0/24'
 
-@description('Name for the storage account that contains support logs from the cluster')
-param supportLogStorageAccountName string = toLower('sflogs${uniqueString(resourceId('Microsoft.Resources/resourceGroups', resourceGroupName))}2')
-
 @description('Virtual Network Name')
 param virtualNetworkName string = 'VNet'
 
@@ -100,9 +94,6 @@ param vmNodeType0Size string = 'Standard_D2_v2'
 param vnetAddressPrefix string = '10.0.0.0/16'
 
 // VARIABLES
-var certificateStoreValue = 'My'
-var clusterProtectionLevel = 'EncryptAndSign'
-
 var nt0applicationEndPort = 30000
 var nt0applicationStartPort = 20000
 var nt0ephemeralEndPort = 65534
@@ -122,9 +113,11 @@ var sfTags = {
   resourceType: 'Service Fabric'
   clusterName: clusterName
 }
-var storageAccountType = 'Standard_LRS'
-var supportLogStorageAccountType = 'Standard_LRS'
-var applicationDiagnosticsStorageAccountType = 'Standard_LRS'
+
+var applicationDiagnosticsStorageAccountName = toLower('sfdiag${uniqueString(subscription().subscriptionId, resourceGroupName, location)}3')
+var supportLogStorageAccountName = toLower('sflogs${uniqueString(subscription().subscriptionId, resourceGroupName, location)}2')
+var applicationDiagnosticsStorageAccountNameID = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Storage/storageAccounts/${applicationDiagnosticsStorageAccountName}'
+var supportLogStorageAccountNameID = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Storage/storageAccounts/${supportLogStorageAccountName}'
 
 // RESOURCES
 // used for adminuser and password test env
@@ -136,41 +129,40 @@ resource kv1 'Microsoft.KeyVault/vaults@2019-09-01' existing = {
 // Resource Group
 module rg '../modules/Microsoft.Resources/resourceGroups/deploy.bicep' = {
   name: resourceGroupName
+  scope: subscription()
   params: {
     name: resourceGroupName
     location: location
   }
 }
 
-// sf logs storage account
-module supportLogStorageAccount '../modules/Microsoft.Storage/storageAccounts/deploy.bicep' = {
-  name: '${uniqueString(deployment().name)}-supportLogStorageAccount'
-  scope: resourceGroup(resourceGroupName)
-  params: {
-    name: supportLogStorageAccountName
-    location: location
-    storageAccountSku: supportLogStorageAccountType
-    storageAccountKind: 'StorageV2'
-    supportsHttpsTrafficOnly: true
-    tags: sfTags
+// sf logs storage account cannot use CARML as not able to get object to run list* listkeys() at 'start'
+resource supportLogStorageAccount 'Microsoft.Storage/storageAccounts@2022-05-01' = {
+  name: supportLogStorageAccountName
+  location: location
+  properties: {
   }
+  kind: 'Storage'
+  sku: {
+    name: 'Standard_LRS'
+  }
+  tags: sfTags
   dependsOn: [
     rg
   ]
 }
 
-// sf application/service diagnostic account
-module applicaitonDiagnosticsStorageAccount '../modules/Microsoft.Storage/storageAccounts/deploy.bicep' = {
-  name: '${uniqueString(deployment().name)}-applicaitonDiagnosticsStorageAccount'
-  scope: resourceGroup(resourceGroupName)
-  params: {
-    name: applicationDiagnosticsStorageAccountName
-    location: location
-    storageAccountSku: applicationDiagnosticsStorageAccountType
-    storageAccountKind: 'StorageV2'
-    supportsHttpsTrafficOnly: true
-    tags: sfTags
+// sf application/service diagnostic account cannot use CARML as not able to get object to run list* listkeys() at 'start'
+resource applicationDiagnosticsStorageAccount 'Microsoft.Storage/storageAccounts@2022-05-01' = {
+  name: applicationDiagnosticsStorageAccountName
+  location: location
+  properties: {
   }
+  kind: 'Storage'
+  sku: {
+    name: 'Standard_LRS'
+  }
+  tags: sfTags
   dependsOn: [
     rg
   ]
@@ -200,20 +192,17 @@ module virtualNetworks '../modules/Microsoft.Network/virtualNetworks/deploy.bice
   ]
 }
 
-// public ip address
-module publicIp0 '../modules/Microsoft.Network/publicIpAddresses/deploy.bicep' = {
-  name: '${uniqueString(deployment().name)}-publicIp-0'
-  scope: resourceGroup(resourceGroupName)
-  params: {
-    name: '${publicIPName}-0'
-    location: location
-    publicIPAddressVersion: 'IPv4'
-    skuTier: 'Regional'
-    skuName: 'Basic'
+// public ip address cannot use CARML as dnsSettings are not exposed
+resource publicIp0 'Microsoft.Network/publicIPAddresses@2022-05-01' = {
+  name: '${publicIPName}-0'
+  location: location
+  properties: {
+    dnsSettings: {
+      domainNameLabel: dnsName
+    }
     publicIPAllocationMethod: 'Dynamic'
-    domainNameLabel: dnsName
-    tags: sfTags
   }
+  tags: sfTags
   dependsOn: [
     rg
   ]
@@ -229,7 +218,7 @@ module loadbalancer0 '../modules/Microsoft.Network/loadBalancers_custom/deploy.b
     frontendIPConfigurations: [
       {
         name: 'LoadBalancerIPConfig'
-        publicIPAddressId: publicIp0.outputs.resourceId
+        publicIPAddressId: publicIp0.id
       }
     ]
     backendAddressPools: [
@@ -241,13 +230,13 @@ module loadbalancer0 '../modules/Microsoft.Network/loadBalancers_custom/deploy.b
     inboundNatPools: [
       {
         name: 'LoadBalancerBEAddressNatPool'
-        properties: {
-          backendPort: 3389
-          frontendIPConfigurationID: lbIPConfig0
-          frontendPortRangeEnd: 4500
-          frontendPortRangeStart: 3389
-          protocol: 'Tcp'
-        }
+        backendPort: 3389
+        frontendIPConfigurationID: lbIPConfig0
+        frontendPortRangeEnd: 4500
+        frontendPortRangeStart: 3389
+        protocol: 'Tcp'
+        enableFloatingIP: false
+        idleTimeoutInMinutes: 5
       }
     ]
     loadBalancerSku: 'Basic'
@@ -262,6 +251,7 @@ module loadbalancer0 '../modules/Microsoft.Network/loadBalancers_custom/deploy.b
         name: 'LBRule'
         probeName: 'FabricGatewayProbe'
         protocol: 'Tcp'
+        enableFloatingIP: false
       }
       {
         backendAddressPoolName: 'LoadBalancerBEAddressPool'
@@ -273,6 +263,7 @@ module loadbalancer0 '../modules/Microsoft.Network/loadBalancers_custom/deploy.b
         name: 'LBHttpRule'
         probeName: 'FabricHttpGatewayProbe'
         protocol: 'Tcp'
+        enableFloatingIP: false
       }
     ]
     probes: [
@@ -311,8 +302,8 @@ module vmss_serviceFabricExtension '../modules/Microsoft.Compute/virtualMachineS
     autoUpgradeMinorVersion: true
     enableAutomaticUpgrade: true
     protectedSettings: {
-      StorageAccountKey1: listKeys(resourceId('Microsoft.Storage/storageAccounts', supportLogStorageAccountName), '2022-09-01').key1
-      StorageAccountKey2: listKeys(resourceId('Microsoft.Storage/storageAccounts', supportLogStorageAccountName), '2022-09-01').key2
+      StorageAccountKey1: listKeys(supportLogStorageAccount.id, '2022-09-01').key1
+      StorageAccountKey2: listKeys(supportLogStorageAccount.id, '2022-09-01').key2
     }
     settings: {
       clusterEndpoint: cluster.outputs.endpoint
@@ -323,7 +314,7 @@ module vmss_serviceFabricExtension '../modules/Microsoft.Compute/virtualMachineS
       nicPrefixOverride: subnet0Prefix
       certificate: {
         thumbprint: certificateThumbprint
-        x509StoreName: certificateStoreValue
+        x509StoreName: 'My'
       }
     }
   }
@@ -347,7 +338,7 @@ module vmss_serviceFabricWADExtension '../modules/Microsoft.Compute/virtualMachi
     enableAutomaticUpgrade: true
     protectedSettings: {
       storageAccountName: applicationDiagnosticsStorageAccountName
-      storageAccountKey: listKeys(resourceId('Microsoft.Storage/storageAccounts', applicationDiagnosticsStorageAccountName), '2022-09-01').key1
+      storageAccountKey: listKeys(applicationDiagnosticsStorageAccount.id, '2022-09-01').key1
       #disable-next-line no-hardcoded-env-urls
       storageAccountEndPoint: 'https://core.windows.net/'
     }
@@ -405,6 +396,7 @@ module virtualMachineScaleSets0 '../modules/Microsoft.Compute/virtualMachineScal
     location: location
     adminUsername: kv1.getSecret('adminUsername') //adminUserName
     adminPassword: kv1.getSecret('adminPassword') //adminPassword
+    enableAutomaticUpdates: false
     enableAutomaticOSUpgrade: true
     osType: vmOSType
     overprovision: overProvision
@@ -419,37 +411,39 @@ module virtualMachineScaleSets0 '../modules/Microsoft.Compute/virtualMachineScal
     }
     nicConfigurations: [
       {
-        name: '${nicName}-0'
-        properties: {
-          ipConfigurations: [
-            {
-              name: '${nicName}-0'
-              properties: {
-                loadBalancerBackendAddressPools: [
-                  {
-                    id: lbPoolID0
-                  }
-                ]
-                loadBalancerInboundNatPools: [
-                  {
-                    id: lbNatPoolID0
-                  }
-                ]
-                subnet: {
-                  id: subnet0Ref
+        ipConfigurations: [
+          {
+            name: 'ipconfig'
+            properties: {
+              loadBalancerBackendAddressPools: [
+                {
+                  id: lbPoolID0
                 }
+              ]
+              loadBalancerInboundNatPools: [
+                {
+                  id: lbNatPoolID0
+                }
+              ]
+              subnet: {
+                id: subnet0Ref
               }
             }
-          ]
+          }
+        ]
+        properties: {
           primary: true
+          enableAcceleratedNetworking: false
         }
+        nicSuffix: '${nicName}-0'
       }
     ]
     osDisk: {
       caching: 'ReadOnly'
+      diskSizeGB: null
       createOption: 'FromImage'
       managedDisk: {
-        storageAccountType: storageAccountType
+        storageAccountType: 'Standard_LRS'
       }
     }
     secrets: [
@@ -459,7 +453,7 @@ module virtualMachineScaleSets0 '../modules/Microsoft.Compute/virtualMachineScal
         }
         vaultCertificates: [
           {
-            certificateStore: certificateStoreValue
+            certificateStore: 'My'
             certificateUrl: certificateUrlValue
           }
         ]
@@ -470,6 +464,9 @@ module virtualMachineScaleSets0 '../modules/Microsoft.Compute/virtualMachineScal
   dependsOn: [
     rg
     virtualNetworks
+    loadbalancer0
+    supportLogStorageAccount
+    applicationDiagnosticsStorageAccount
   ]
 }
 
@@ -480,14 +477,13 @@ module cluster '../modules/Microsoft.ServiceFabric/clusters/deploy.bicep' = {
   params: {
     name: clusterName
     location: location
-    // properties: {
     addOnFeatures: [
       'DnsService'
       'RepairManager'
     ]
     certificate: {
       thumbprint: certificateThumbprint
-      x509StoreName: certificateStoreValue
+      x509StoreName: 'My'
     }
     clientCertificateCommonNames: []
     clientCertificateThumbprints: []
@@ -503,14 +499,14 @@ module cluster '../modules/Microsoft.ServiceFabric/clusters/deploy.bicep' = {
         parameters: [
           {
             name: 'ClusterProtectionLevel'
-            value: clusterProtectionLevel
+            value: 'EncryptAndSign'
           }
         ]
         name: 'Security'
       }
     ]
     // using custom publicipaddress module that outputs dnsSettings
-    managementEndpoint: 'https://${publicIp0.outputs.dnsSettings.fqdn}:${nt0fabricHttpGatewayPort}'
+    managementEndpoint: 'https://${publicIp0.properties.dnsSettings.fqdn}:${nt0fabricHttpGatewayPort}'
     nodeTypes: [
       {
         name: vmNodeType0Name
