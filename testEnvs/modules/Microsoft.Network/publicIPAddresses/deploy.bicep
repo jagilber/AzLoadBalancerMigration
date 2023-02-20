@@ -219,6 +219,3 @@ output ipAddress string = contains(publicIpAddress.properties, 'ipAddress') ? pu
 
 @description('The location the resource was deployed into.')
 output location string = publicIpAddress.location
-
-@description('The public IP address of the public IP address resource.')
-output dnsSettings object = publicIpAddress.properties.dnsSettings
