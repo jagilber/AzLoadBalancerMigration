@@ -12,7 +12,7 @@ param keyVaultResourceGroupName string
 param adminPassword string
 
 @description('Remote desktop user Id')
-param adminUserName string = 'testadm'
+param adminUserName string
 
 @description('Certificate Thumbprint')
 param certificateThumbprint string
@@ -25,7 +25,7 @@ param certificateUrlValue string
 param clusterName string
 
 @description('DNS Name')
-param dnsName string
+param dnsName string = clusterName
 
 @description('Cluster and NodeType 0 Durability Level. see: https://learn.microsoft.com/azure/service-fabric/service-fabric-cluster-capacity#durability-characteristics-of-the-cluster')
 @allowed([
@@ -342,8 +342,8 @@ resource vmNodeType0 'Microsoft.Compute/virtualMachineScaleSets@2022-08-01' = {
               type: 'ServiceFabricNode'
               autoUpgradeMinorVersion: true
               protectedSettings: {
-                StorageAccountKey1: listKeys(supportLogStorageAccount.id, '2022-09-01').key1
-                StorageAccountKey2: listKeys(supportLogStorageAccount.id, '2015-09-01').key2
+                StorageAccountKey1: listKeys(supportLogStorageAccount.id, '2022-09-01').keys[0].value
+                StorageAccountKey2: listKeys(supportLogStorageAccount.id, '2022-09-01').keys[1].value
               }
               publisher: 'Microsoft.Azure.ServiceFabric'
               settings: {
@@ -368,7 +368,7 @@ resource vmNodeType0 'Microsoft.Compute/virtualMachineScaleSets@2022-08-01' = {
               autoUpgradeMinorVersion: true
               protectedSettings: {
                 storageAccountName: applicationDiagnosticsStorageAccountName
-                storageAccountKey: listKeys(applicationDiagnosticsStorageAccount.id, '2015-09-01').key1
+                storageAccountKey: listKeys(applicationDiagnosticsStorageAccount.id, '2022-09-01').keys[0].value
                 #disable-next-line no-hardcoded-env-urls
                 storageAccountEndPoint: 'https://core.windows.net/'
               }
@@ -450,8 +450,8 @@ resource vmNodeType0 'Microsoft.Compute/virtualMachineScaleSets@2022-08-01' = {
         ]
       }
       osProfile: {
-        adminPassword: adminPassword //kv1.getSecret('adminPassword')  //adminPassword
-        adminUsername: adminUserName //kv1.getSecret('adminUsername') //adminUserName
+        adminPassword: kv1.getSecret('adminPassword')  //adminPassword
+        adminUsername: kv1.getSecret('adminUsername') //adminUserName
         computerNamePrefix: vmNodeType0Name
         secrets: [
           {
@@ -562,5 +562,3 @@ output location string = location
 
 @description('cluster management endpoint.')
 output managementEndpoint string = cluster.properties.managementEndpoint
-
-
