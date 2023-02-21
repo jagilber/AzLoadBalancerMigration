@@ -116,8 +116,11 @@ var sfTags = {
 
 var applicationDiagnosticsStorageAccountName = toLower('sfdiag${uniqueString(subscription().subscriptionId, resourceGroupName, location)}3')
 var supportLogStorageAccountName = toLower('sflogs${uniqueString(subscription().subscriptionId, resourceGroupName, location)}2')
-//var applicationDiagnosticsStorageAccountNameID = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Storage/storageAccounts/${applicationDiagnosticsStorageAccountName}'
-//var supportLogStorageAccountNameID = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Storage/storageAccounts/${supportLogStorageAccountName}'
+var applicationDiagnosticsStorageAccountNameID = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Storage/storageAccounts/${applicationDiagnosticsStorageAccountName}'
+var supportLogStorageAccountNameID = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Storage/storageAccounts/${supportLogStorageAccountName}'
+//var storageAccountType = 'Standard_LRS'
+var supportLogStorageAccountType = 'Standard_LRS'
+var applicationDiagnosticsStorageAccountType = 'Standard_LRS'
 
 // RESOURCES
 // used for adminuser and password test env
@@ -126,7 +129,7 @@ resource kv1 'Microsoft.KeyVault/vaults@2019-09-01' existing = {
   scope: resourceGroup(keyVaultResourceGroupName)
 }
 
-// Resource Group
+// Resource Group using modified resourcegroup module that doesnt pass managedBy as it is getting error ResourceGroupManagedByMismatch
 module rg '../modules/Microsoft.Resources/resourceGroups/deploy.bicep' = {
   name: resourceGroupName
   scope: subscription()
@@ -137,15 +140,15 @@ module rg '../modules/Microsoft.Resources/resourceGroups/deploy.bicep' = {
   }
 }
 
-// sf logs storage account cannot use CARML as not able to get object to run list* listkeys() at 'start'
-resource supportLogStorageAccount 'Microsoft.Storage/storageAccounts@2022-05-01' = {
-  name: supportLogStorageAccountName
+// public ip address cannot use CARML as dnsSettings are not exposed
+resource publicIp0 'Microsoft.Network/publicIPAddresses@2022-05-01' = {
+  name: '${publicIPName}-0'
   location: location
   properties: {
-  }
-  kind: 'Storage'
-  sku: {
-    name: 'Standard_LRS'
+    dnsSettings: {
+      domainNameLabel: dnsName
+    }
+    publicIPAllocationMethod: 'Dynamic'
   }
   tags: sfTags
   dependsOn: [
@@ -153,21 +156,58 @@ resource supportLogStorageAccount 'Microsoft.Storage/storageAccounts@2022-05-01'
   ]
 }
 
-// sf application/service diagnostic account cannot use CARML as not able to get object to run list* listkeys() at 'start'
-resource applicationDiagnosticsStorageAccount 'Microsoft.Storage/storageAccounts@2022-05-01' = {
-  name: applicationDiagnosticsStorageAccountName
-  location: location
-  properties: {
+// sf logs storage account
+module supportLogStorageAccount '../modules/Microsoft.Storage/storageAccounts/deploy.bicep' = {
+  name: '${uniqueString(deployment().name)}-supportLogStorageAccount'
+  scope: resourceGroup(resourceGroupName)
+  params: {
+    name: supportLogStorageAccountName
+    location: location
+    storageAccountSku: supportLogStorageAccountType
+    storageAccountKind: 'StorageV2'
+    supportsHttpsTrafficOnly: true
+    tags: sfTags
   }
-  kind: 'Storage'
-  sku: {
-    name: 'Standard_LRS'
-  }
-  tags: sfTags
   dependsOn: [
     rg
   ]
 }
+
+// sf application/service diagnostic account
+module applicationDiagnosticsStorageAccount '../modules/Microsoft.Storage/storageAccounts/deploy.bicep' = {
+  name: '${uniqueString(deployment().name)}-applicationDiagnosticsStorageAccount'
+  scope: resourceGroup(resourceGroupName)
+  params: {
+    name: applicationDiagnosticsStorageAccountName
+    location: location
+    storageAccountSku: applicationDiagnosticsStorageAccountType
+    storageAccountKind: 'StorageV2'
+    supportsHttpsTrafficOnly: true
+    tags: sfTags
+  }
+  dependsOn: [
+    rg
+  ]
+}
+
+// // public ip address
+// module publicIp0 '../modules/Microsoft.Network/publicIpAddresses/deploy.bicep' = {
+//   name: '${uniqueString(deployment().name)}-publicIp-0'
+//   scope: resourceGroup(resourceGroupName)
+//   params: {
+//     name: '${publicIPName}-0'
+//     location: location
+//     publicIPAddressVersion: 'IPv4'
+//     skuTier: 'Regional'
+//     skuName: 'Basic'
+//     publicIPAllocationMethod: 'Dynamic'
+//     domainNameLabel: dnsName
+//     tags: sfTags
+//   }
+//   dependsOn: [
+//     rg
+//   ]
+// }
 
 // vnet and subnet
 module virtualNetworks '../modules/Microsoft.Network/virtualNetworks/deploy.bicep' = {
@@ -188,22 +228,6 @@ module virtualNetworks '../modules/Microsoft.Network/virtualNetworks/deploy.bice
     ]
     tags: sfTags
   }
-  dependsOn: [
-    rg
-  ]
-}
-
-// public ip address cannot use CARML as dnsSettings are not exposed
-resource publicIp0 'Microsoft.Network/publicIPAddresses@2022-05-01' = {
-  name: '${publicIPName}-0'
-  location: location
-  properties: {
-    dnsSettings: {
-      domainNameLabel: dnsName
-    }
-    publicIPAllocationMethod: 'Dynamic'
-  }
-  tags: sfTags
   dependsOn: [
     rg
   ]
@@ -303,8 +327,10 @@ module vmss_serviceFabricExtension '../modules/Microsoft.Compute/virtualMachineS
     autoUpgradeMinorVersion: true
     enableAutomaticUpgrade: true
     protectedSettings: {
-      StorageAccountKey1: listKeys(supportLogStorageAccount.id, '2022-09-01').keys[0].value
-      StorageAccountKey2: listKeys(supportLogStorageAccount.id, '2022-09-01').keys[1].value
+      // StorageAccountKey1: listKeys(supportLogStorageAccount.id, '2022-09-01').keys[0].value
+      // StorageAccountKey2: listKeys(supportLogStorageAccount.id, '2022-09-01').keys[1].value
+      StorageAccountKey1: listKeys(supportLogStorageAccountNameID, '2022-09-01').keys[0].value
+      StorageAccountKey2: listKeys(supportLogStorageAccountNameID, '2022-09-01').keys[1].value
     }
     settings: {
       clusterEndpoint: cluster.outputs.endpoint
@@ -339,7 +365,8 @@ module vmss_serviceFabricWADExtension '../modules/Microsoft.Compute/virtualMachi
     enableAutomaticUpgrade: true
     protectedSettings: {
       storageAccountName: applicationDiagnosticsStorageAccountName
-      storageAccountKey: listKeys(applicationDiagnosticsStorageAccount.id, '2022-09-01').keys[0].value
+      //storageAccountKey: listKeys(applicationDiagnosticsStorageAccount.id, '2022-09-01').keys[0].value
+      storageAccountKey: listKeys(applicationDiagnosticsStorageAccountNameID, '2022-09-01').keys[0].value
       #disable-next-line no-hardcoded-env-urls
       storageAccountEndPoint: 'https://core.windows.net/'
     }
