@@ -1,4 +1,4 @@
-// service fabric 3 node bronze durability cluster with no management role (MR)
+// service fabric 5 node silver durability cluster with management role (MR)
 // v0.1
 
 targetScope = 'resourceGroup'
@@ -33,13 +33,13 @@ param dnsName string = clusterName
   'Silver'
   'Gold'
 ])
-param durabilityLevel string = 'Bronze'
+param durabilityLevel string = 'Silver'
 
 @description('Nodetype Network Name')
 param nicName string = 'NIC'
 
 @description('Nodetype0 Instance Count')
-param nt0InstanceCount int = 3
+param nt0InstanceCount int = 5
 
 @description('Nodetype0 Reverse Proxy Port')
 param nt0reverseProxyEndpointPort int = 19081
@@ -54,7 +54,7 @@ param publicIPName string = 'PublicIP-LB-FE'
   'Gold'
   'Platinum'
 ])
-param reliabilityLevel string = 'Bronze'
+param reliabilityLevel string = 'Silver'
 
 @description('Resource Id of the key vault, is should be in the format of /subscriptions/<Sub ID>/resourceGroups/<Resource group name>/providers/Microsoft.KeyVault/vaults/<vault name>')
 param sourceVaultValue string
