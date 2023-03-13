@@ -1,5 +1,6 @@
 # Load Modules
 Import-Module ((Split-Path $PSScriptRoot -Parent) + "/Log/Log.psd1")
+Import-Module ((Split-Path $PSScriptRoot -Parent) + "/Job/Job.psd1")
 Import-Module ((Split-Path $PSScriptRoot -Parent) + "/UpdateVmssInstances/UpdateVmssInstances.psd1")
 function NsgCreation {
     [CmdletBinding()]
@@ -138,7 +139,8 @@ function NsgCreation {
         log -Message "[NsgCreation] Saving VMSS Named: $($vmss.Name)"
         try {
             $ErrorActionPreference = 'Stop'
-            Update-AzVmss -ResourceGroupName $vmss.ResourceGroupName -VMScaleSetName $vmss.Name -VirtualMachineScaleSet $vmss > $null
+            $job = Update-AzVmss -ResourceGroupName $vmss.ResourceGroupName -VMScaleSetName $vmss.Name -VirtualMachineScaleSet $vmss -AsJob
+            WaitJob -JobId $job.Id
         }
         catch {
             $message = @"
