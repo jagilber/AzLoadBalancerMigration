@@ -1,7 +1,7 @@
 // service fabric 3 node bronze durability cluster with no management role (MR)
 // v0.1
 
-targetScope = 'resourceGroup'
+targetScope = 'subscription'
 param location string
 param resourceGroupName string
 param keyVaultName string

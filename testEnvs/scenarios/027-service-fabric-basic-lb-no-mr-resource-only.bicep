@@ -22,7 +22,7 @@ param certificateThumbprint string
 param certificateUrlValue string
 
 @description('Name of your cluster - Between 3 and 23 characters. Letters and numbers only')
-param clusterName string
+param clusterName string = resourceGroupName
 
 @description('DNS Name')
 param dnsName string = clusterName
@@ -142,6 +142,11 @@ module rg '../modules/Microsoft.Resources/resourceGroups/deploy.bicep' = {
   }
 }
 
+// resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' existing = {
+//   //  location: location
+//     name: resourceGroupName
+//   }
+  
 // sf logs storage account cannot use CARML as not able to get object to run list* listkeys() at 'start'
 resource supportLogStorageAccount 'Microsoft.Storage/storageAccounts@2022-05-01' = {
   name: supportLogStorageAccountName
